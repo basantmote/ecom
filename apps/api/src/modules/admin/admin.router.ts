@@ -3,6 +3,7 @@ import { prisma } from '@ecom/db'
 import { authenticate, authorize } from '../../middleware/auth.middleware'
 import { AppError } from '../../middleware/error.middleware'
 import { z } from 'zod'
+import { settlementQueue } from '../../queues/index'
 
 export const adminRouter = Router()
 
@@ -121,10 +122,10 @@ adminRouter.post('/flash-sales', async (req, res, next) => {
   }
 })
 
-// Settlement trigger
+// Settlement trigger — enqueues a background job instead of blocking the request
 adminRouter.post('/settlements/run', async (req, res, next) => {
   try {
-    const { vendorId, periodStart, periodEnd } = z
+    const body = z
       .object({
         vendorId: z.string().optional(),
         periodStart: z.string().datetime(),
@@ -132,50 +133,8 @@ adminRouter.post('/settlements/run', async (req, res, next) => {
       })
       .parse(req.body)
 
-    const whereVendor = vendorId ? { id: vendorId } : { status: 'APPROVED' as const }
-    const vendors = await prisma.vendor.findMany({ where: whereVendor })
-
-    const results = []
-    for (const vendor of vendors) {
-      const items = await prisma.orderItem.findMany({
-        where: {
-          vendorId: vendor.id,
-          status: 'DELIVERED',
-          order: {
-            createdAt: { gte: new Date(periodStart), lte: new Date(periodEnd) },
-            paymentStatus: 'SUCCESS',
-          },
-          settlementItem: null,
-        },
-      })
-      if (items.length === 0) continue
-
-      const grossAmount = items.reduce((sum, i) => sum + i.totalPrice, 0)
-      const commissionAmount = Math.floor((grossAmount * vendor.commissionRate) / 100)
-      const netAmount = grossAmount - commissionAmount
-
-      const settlement = await prisma.vendorSettlement.create({
-        data: {
-          vendorId: vendor.id,
-          periodStart: new Date(periodStart),
-          periodEnd: new Date(periodEnd),
-          grossAmount,
-          commissionAmount,
-          netAmount,
-          settlementItems: {
-            create: items.map((item) => ({
-              orderItemId: item.id,
-              gross: item.totalPrice,
-              commission: Math.floor((item.totalPrice * vendor.commissionRate) / 100),
-              net: item.totalPrice - Math.floor((item.totalPrice * vendor.commissionRate) / 100),
-            })),
-          },
-        },
-      })
-      results.push(settlement)
-    }
-
-    res.json({ success: true, data: results, message: `${results.length} settlements created` })
+    const job = await settlementQueue.add('run-settlement', body)
+    res.json({ success: true, message: 'Settlement job queued', jobId: job.id })
   } catch (err) {
     next(err)
   }

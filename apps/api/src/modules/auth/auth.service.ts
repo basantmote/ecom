@@ -4,6 +4,7 @@ import crypto from 'crypto'
 import { prisma } from '@ecom/db'
 import { AuthTokens, TokenPayload } from '@ecom/types'
 import { AppError } from '../../middleware/error.middleware'
+import { sendSms } from '../../lib/sms'
 import { RegisterInput, LoginInput } from './auth.schema'
 
 const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET!
@@ -114,8 +115,7 @@ export async function sendOtp(phone: string): Promise<void> {
     data: { phone, code, expiresAt },
   })
 
-  // TODO: integrate Sparrow SMS or similar Nepal SMS provider
-  // await smsService.send(phone, `Your OTP is: ${code}`)
+  await sendSms(phone, `Your EcomNP OTP is: ${code}. Valid for 10 minutes. Do not share this code.`)
 }
 
 export async function verifyOtp(phone: string, code: string): Promise<boolean> {

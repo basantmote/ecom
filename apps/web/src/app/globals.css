@@ -1,3 +1,80 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  :root {
+    --ink: #1a1410;
+    --ink-2: #4a4239;
+    --ink-3: #8a8378;
+    --paper: #fdfbf7;
+    --paper-2: #f5f1e8;
+    --paper-3: #ebe5d6;
+    --line-soft: #d9d2c2;
+    --crimson: #b91c1c;
+    --crimson-deep: #8b0a0a;
+    --gold: #c98a2b;
+  }
+
+  html {
+    color: var(--ink);
+    background: var(--paper);
+    font-family: var(--font-inter), system-ui, sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+}
+
+@layer utilities {
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@layer components {
+  .nav-shell {
+    @apply bg-paper border border-line-soft rounded-xl shadow-nav;
+  }
+
+  .card {
+    @apply bg-paper border border-line-soft rounded-lg shadow-card transition-shadow duration-200 hover:shadow-card-hover;
+  }
+
+  .flash-bar {
+    background: linear-gradient(135deg, var(--crimson-deep) 0%, var(--crimson) 100%);
+    @apply text-white;
+  }
+
+  .cat-tile {
+    @apply flex flex-col items-center gap-2 p-3 rounded-lg bg-paper-2 border border-line-soft hover:border-crimson hover:bg-paper-3 transition-colors cursor-pointer;
+  }
+
+  .btn-primary {
+    @apply bg-crimson text-white px-4 py-2 rounded-md font-sans font-medium text-sm hover:bg-crimson-deep transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-secondary {
+    @apply bg-transparent text-crimson px-4 py-2 rounded-md font-sans font-medium text-sm border border-crimson hover:bg-crimson hover:text-white transition-colors disabled:opacity-50;
+  }
+
+  .btn-ghost {
+    @apply bg-transparent text-ink-2 px-4 py-2 rounded-md font-sans font-medium text-sm hover:bg-paper-2 transition-colors;
+  }
+
+  .input-field {
+    @apply w-full bg-paper border border-line-soft rounded-md px-3 py-2 text-sm text-ink placeholder:text-ink-3 focus:outline-none focus:border-ink focus:ring-1 focus:ring-ink transition-colors;
+  }
+
+  .price {
+    @apply font-mono font-medium;
+  }
+
+  .badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-medium;
+  }
+}

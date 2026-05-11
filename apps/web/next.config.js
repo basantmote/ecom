@@ -3,10 +3,8 @@ const nextConfig = {
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: 'res.cloudinary.com' },
+      { protocol: 'https', hostname: 'placehold.co' },
     ],
-  },
-  env: {
-    API_URL: process.env.API_URL,
   },
 }
 
