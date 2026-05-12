@@ -295,6 +295,60 @@ adminRouter.get('/orders', async (req, res, next) => {
   }
 })
 
+adminRouter.get('/orders/:id', async (req, res, next) => {
+  try {
+    const order = await prisma.order.findUnique({
+      where: { id: req.params['id'] },
+      include: {
+        customer: { select: { email: true, phone: true, profile: true } },
+        items: {
+          include: {
+            variant: { select: { id: true, sku: true, price: true, images: true, attributes: true, product: { select: { id: true, name: true, slug: true } } } },
+            vendor: { select: { id: true, storeName: true, slug: true, commissionRate: true, bankName: true, bankAccount: true, bankHolder: true } },
+          },
+          orderBy: { vendorId: 'asc' },
+        },
+        statusLogs: { orderBy: { createdAt: 'asc' } },
+        paymentTransactions: { orderBy: { createdAt: 'desc' } },
+      },
+    })
+    if (!order) return res.status(404).json({ success: false, message: 'Order not found' })
+
+    // Build per-vendor payout summary
+    const vendorMap = new Map<string, {
+      vendor: typeof order.items[0]['vendor']
+      items: typeof order.items
+      grossAmount: number
+      commission: number
+      netPayout: number
+    }>()
+
+    for (const item of order.items) {
+      const v = item.vendor
+      if (!vendorMap.has(v.id)) {
+        vendorMap.set(v.id, { vendor: v, items: [], grossAmount: 0, commission: 0, netPayout: 0 })
+      }
+      const entry = vendorMap.get(v.id)!
+      entry.items.push(item)
+      const gross = item.totalPrice
+      const commission = Math.round(gross * v.commissionRate / 100)
+      entry.grossAmount += gross
+      entry.commission += commission
+      entry.netPayout += gross - commission
+    }
+
+    res.json({
+      success: true,
+      data: {
+        ...order,
+        vendorBreakdown: Array.from(vendorMap.values()),
+      },
+    })
+  } catch (err) {
+    next(err)
+  }
+})
+
 adminRouter.patch('/orders/:id/status', async (req, res, next) => {
   try {
     const { status } = z.object({

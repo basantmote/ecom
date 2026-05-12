@@ -4,8 +4,11 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 
-interface Order {
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface OrderListItem {
   id: string
+  orderNumber: string | null
   status: string
   paymentMethod: string
   paymentStatus: string
@@ -24,6 +27,86 @@ interface Order {
   }[]
 }
 
+interface VendorItem {
+  id: string
+  quantity: number
+  unitPrice: number
+  totalPrice: number
+  status: string
+  variant: {
+    id: string
+    sku: string
+    images: string[]
+    attributes: Record<string, string>
+    product: { id: string; name: string; slug: string }
+  }
+  vendor: {
+    id: string
+    storeName: string
+    slug: string
+    commissionRate: number
+    bankName: string | null
+    bankAccount: string | null
+    bankHolder: string | null
+  }
+}
+
+interface VendorBreakdown {
+  vendor: VendorItem['vendor']
+  items: VendorItem[]
+  grossAmount: number
+  commission: number
+  netPayout: number
+}
+
+interface StatusLog {
+  id: string
+  fromStatus: string | null
+  toStatus: string
+  note: string | null
+  createdAt: string
+}
+
+interface PaymentTransaction {
+  id: string
+  method: string
+  amount: number
+  status: string
+  createdAt: string
+}
+
+interface OrderDetail {
+  id: string
+  orderNumber: string | null
+  status: string
+  paymentMethod: string
+  paymentStatus: string
+  subtotal: number
+  discountAmount: number
+  deliveryFee: number
+  total: number
+  notes: string | null
+  createdAt: string
+  deliveryAddress: {
+    recipientName: string
+    recipientPhone: string
+    street: string
+    city: string
+    province: string
+  }
+  customer: {
+    email: string | null
+    phone: string | null
+    profile: { fullName: string } | null
+  }
+  items: VendorItem[]
+  vendorBreakdown: VendorBreakdown[]
+  statusLogs: StatusLog[]
+  paymentTransactions: PaymentTransaction[]
+}
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
 const STATUS_OPTIONS = ['PENDING', 'CONFIRMED', 'PROCESSING', 'PACKED', 'PICKED_UP', 'IN_TRANSIT', 'DELIVERED', 'CANCELLED', 'REFUNDED']
 
 const STATUS_STYLES: Record<string, string> = {
@@ -38,14 +121,28 @@ const STATUS_STYLES: Record<string, string> = {
   REFUNDED: 'bg-red-100 text-red-600',
 }
 
-function formatNPR(paisa: number) {
+const PAYMENT_STATUS_STYLES: Record<string, string> = {
+  PENDING: 'bg-amber-100 text-amber-700',
+  SUCCESS: 'bg-green-100 text-green-700',
+  FAILED: 'bg-red-100 text-red-600',
+  REFUNDED: 'bg-purple-100 text-purple-700',
+}
+
+function fmt(paisa: number) {
   return 'Rs. ' + (paisa / 100).toLocaleString('en-NP')
 }
+
+function displayId(order: { orderNumber: string | null; id: string }) {
+  return order.orderNumber ?? `#${order.id.slice(-8).toUpperCase()}`
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function OrdersPage() {
   const qc = useQueryClient()
   const [page, setPage] = useState(1)
   const [statusFilter, setStatusFilter] = useState('')
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null)
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin-orders', page, statusFilter],
@@ -53,14 +150,26 @@ export default function OrdersPage() {
       const params = new URLSearchParams({ page: String(page), limit: '20' })
       if (statusFilter) params.set('status', statusFilter)
       const res = await api.get(`/admin/orders?${params}`)
-      return res.data as { data: Order[]; meta: { total: number; totalPages: number } }
+      return res.data as { data: OrderListItem[]; meta: { total: number; totalPages: number } }
     },
+  })
+
+  const { data: orderDetail, isLoading: detailLoading } = useQuery({
+    queryKey: ['admin-order-detail', selectedOrderId],
+    queryFn: async () => {
+      const res = await api.get(`/admin/orders/${selectedOrderId}`)
+      return res.data.data as OrderDetail
+    },
+    enabled: !!selectedOrderId,
   })
 
   const updateStatus = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) =>
       api.patch(`/admin/orders/${id}/status`, { status }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-orders'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin-orders'] })
+      qc.invalidateQueries({ queryKey: ['admin-order-detail', selectedOrderId] })
+    },
   })
 
   const orders = data?.data ?? []
@@ -68,6 +177,7 @@ export default function OrdersPage() {
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="font-serif text-2xl font-bold text-ink">Orders</h2>
@@ -79,22 +189,17 @@ export default function OrdersPage() {
           className="input-field text-sm w-auto"
         >
           <option value="">All statuses</option>
-          {STATUS_OPTIONS.map((s) => (
-            <option key={s} value={s}>{s}</option>
-          ))}
+          {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
       </div>
 
+      {/* Table */}
       {isLoading ? (
         <div className="space-y-3">
-          {[...Array(8)].map((_, i) => (
-            <div key={i} className="card p-4 animate-pulse h-16 bg-paper-2" />
-          ))}
+          {[...Array(8)].map((_, i) => <div key={i} className="card p-4 animate-pulse h-16 bg-paper-2" />)}
         </div>
       ) : orders.length === 0 ? (
-        <div className="card p-12 text-center">
-          <p className="text-ink-3">No orders found.</p>
-        </div>
+        <div className="card p-12 text-center"><p className="text-ink-3">No orders found.</p></div>
       ) : (
         <>
           <div className="card overflow-hidden">
@@ -112,14 +217,19 @@ export default function OrdersPage() {
               </thead>
               <tbody className="divide-y divide-line-soft">
                 {orders.map((order) => (
-                  <tr key={order.id} className="hover:bg-paper-2/50 transition-colors">
-                    <td className="px-4 py-3 font-mono text-xs text-ink-3">
-                      #{order.id.slice(-8).toUpperCase()}
+                  <tr
+                    key={order.id}
+                    onClick={() => setSelectedOrderId(order.id)}
+                    className={`hover:bg-paper-2/50 transition-colors cursor-pointer ${selectedOrderId === order.id ? 'bg-crimson/4' : ''}`}
+                  >
+                    <td className="px-4 py-3 font-mono text-xs font-semibold text-crimson">
+                      {displayId(order)}
                     </td>
                     <td className="px-4 py-3">
                       <p className="font-medium text-ink">
                         {order.customer.profile?.fullName ?? order.customer.email ?? order.customer.phone ?? '—'}
                       </p>
+                      <p className="text-xs text-ink-3">{order.customer.email ?? order.customer.phone ?? ''}</p>
                     </td>
                     <td className="px-4 py-3 text-ink-2">
                       <p className="line-clamp-1">
@@ -127,20 +237,22 @@ export default function OrdersPage() {
                         {order.items.length > 1 && ` +${order.items.length - 1} more`}
                       </p>
                     </td>
-                    <td className="px-4 py-3 text-right font-mono font-medium text-ink">
-                      {formatNPR(order.total)}
+                    <td className="px-4 py-3 text-right font-mono font-medium text-ink">{fmt(order.total)}</td>
+                    <td className="px-4 py-3">
+                      <p className="text-xs text-ink-3">{order.paymentMethod}</p>
+                      <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${PAYMENT_STATUS_STYLES[order.paymentStatus] ?? 'bg-paper-3 text-ink-3'}`}>
+                        {order.paymentStatus}
+                      </span>
                     </td>
-                    <td className="px-4 py-3 text-xs text-ink-3">{order.paymentMethod}</td>
                     <td className="px-4 py-3 text-center">
                       <select
                         value={order.status}
-                        onChange={(e) => updateStatus.mutate({ id: order.id, status: e.target.value })}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => { e.stopPropagation(); updateStatus.mutate({ id: order.id, status: e.target.value }) }}
                         disabled={updateStatus.isPending}
                         className={`text-xs font-medium px-2 py-0.5 rounded-full border-0 cursor-pointer focus:outline-none focus:ring-1 focus:ring-crimson/30 ${STATUS_STYLES[order.status] ?? 'bg-paper-3 text-ink-3'}`}
                       >
-                        {STATUS_OPTIONS.map((s) => (
-                          <option key={s} value={s}>{s}</option>
-                        ))}
+                        {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
                       </select>
                     </td>
                     <td className="px-4 py-3 text-xs text-ink-3 whitespace-nowrap">
@@ -160,6 +272,244 @@ export default function OrdersPage() {
             </div>
           )}
         </>
+      )}
+
+      {/* Order Detail Panel */}
+      {selectedOrderId && (
+        <div className="fixed inset-0 z-50 flex items-start justify-end bg-black/40 backdrop-blur-sm" onClick={() => setSelectedOrderId(null)}>
+          <div
+            className="relative bg-paper h-full w-full max-w-2xl shadow-float border-l border-line-soft overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {detailLoading || !orderDetail ? (
+              <div className="flex items-center justify-center h-full">
+                <div className="w-6 h-6 border-2 border-crimson border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : (
+              <>
+                {/* Panel header */}
+                <div className="sticky top-0 bg-paper border-b border-line-soft px-6 py-4 flex items-center justify-between z-10">
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h2 className="font-mono font-bold text-ink">{displayId(orderDetail)}</h2>
+                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_STYLES[orderDetail.status] ?? 'bg-paper-3 text-ink-3'}`}>
+                        {orderDetail.status}
+                      </span>
+                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${PAYMENT_STATUS_STYLES[orderDetail.paymentStatus] ?? 'bg-paper-3 text-ink-3'}`}>
+                        {orderDetail.paymentStatus}
+                      </span>
+                    </div>
+                    <p className="text-xs text-ink-3 mt-0.5">
+                      {new Date(orderDetail.createdAt).toLocaleString('en-NP', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={orderDetail.status}
+                      onChange={(e) => updateStatus.mutate({ id: orderDetail.id, status: e.target.value })}
+                      disabled={updateStatus.isPending}
+                      className="input-field text-xs py-1.5 w-auto"
+                    >
+                      {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                    <button onClick={() => setSelectedOrderId(null)} className="btn-icon shrink-0">
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="p-6 space-y-6">
+                  {/* Customer + delivery */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <section>
+                      <h3 className="text-xs font-semibold text-ink-3 uppercase tracking-wider mb-2">Customer</h3>
+                      <div className="card p-4 space-y-1">
+                        <p className="font-medium text-sm text-ink">{orderDetail.customer.profile?.fullName ?? '—'}</p>
+                        <p className="text-xs text-ink-3">{orderDetail.customer.email ?? '—'}</p>
+                        <p className="text-xs text-ink-3">{orderDetail.customer.phone ?? '—'}</p>
+                      </div>
+                    </section>
+                    <section>
+                      <h3 className="text-xs font-semibold text-ink-3 uppercase tracking-wider mb-2">Delivery Address</h3>
+                      <div className="card p-4 space-y-0.5">
+                        <p className="font-medium text-sm text-ink">{orderDetail.deliveryAddress.recipientName}</p>
+                        <p className="text-xs text-ink-3">{orderDetail.deliveryAddress.street}</p>
+                        <p className="text-xs text-ink-3">{orderDetail.deliveryAddress.city}, {orderDetail.deliveryAddress.province}</p>
+                        <p className="text-xs text-ink-3">{orderDetail.deliveryAddress.recipientPhone}</p>
+                      </div>
+                    </section>
+                  </div>
+
+                  {/* Vendor breakdown — the core feature */}
+                  <section>
+                    <h3 className="text-xs font-semibold text-ink-3 uppercase tracking-wider mb-3">
+                      Vendor Breakdown ({orderDetail.vendorBreakdown.length} vendor{orderDetail.vendorBreakdown.length !== 1 ? 's' : ''})
+                    </h3>
+                    <div className="space-y-4">
+                      {orderDetail.vendorBreakdown.map(({ vendor, items, grossAmount, commission, netPayout }) => (
+                        <div key={vendor.id} className="card overflow-hidden">
+                          {/* Vendor header */}
+                          <div className="flex items-center justify-between px-4 py-3 bg-paper-2 border-b border-line-soft">
+                            <div>
+                              <p className="font-semibold text-ink text-sm">{vendor.storeName}</p>
+                              <p className="text-xs text-ink-3 font-mono">/{vendor.slug} · {vendor.commissionRate}% commission</p>
+                            </div>
+                            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                              {items.length} item{items.length !== 1 ? 's' : ''}
+                            </span>
+                          </div>
+
+                          {/* Items */}
+                          <ul className="divide-y divide-line-soft">
+                            {items.map((item) => (
+                              <li key={item.id} className="flex items-start gap-3 px-4 py-3">
+                                {item.variant.images[0] ? (
+                                  <img src={item.variant.images[0]} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0 bg-paper-2" />
+                                ) : (
+                                  <div className="w-10 h-10 rounded-lg bg-paper-3 shrink-0 flex items-center justify-center text-lg">📦</div>
+                                )}
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-ink line-clamp-1">{item.variant.product.name}</p>
+                                  <p className="text-xs text-ink-3 font-mono">
+                                    SKU: {item.variant.sku} · #{item.variant.product.id.slice(-8).toUpperCase()}
+                                  </p>
+                                  {Object.keys(item.variant.attributes ?? {}).length > 0 && (
+                                    <p className="text-xs text-ink-3">
+                                      {Object.entries(item.variant.attributes).map(([k, v]) => `${k}: ${v}`).join(' · ')}
+                                    </p>
+                                  )}
+                                </div>
+                                <div className="text-right shrink-0">
+                                  <p className="font-mono text-sm font-medium text-ink">{fmt(item.totalPrice)}</p>
+                                  <p className="text-xs text-ink-3">×{item.quantity} @ {fmt(item.unitPrice)}</p>
+                                </div>
+                              </li>
+                            ))}
+                          </ul>
+
+                          {/* Payout summary */}
+                          <div className="px-4 py-3 bg-paper-2/50 border-t border-line-soft space-y-1.5 text-sm">
+                            <div className="flex justify-between text-ink-2">
+                              <span>Gross amount</span>
+                              <span className="font-mono">{fmt(grossAmount)}</span>
+                            </div>
+                            <div className="flex justify-between text-crimson/80">
+                              <span>Platform commission ({vendor.commissionRate}%)</span>
+                              <span className="font-mono">−{fmt(commission)}</span>
+                            </div>
+                            <div className="flex justify-between font-bold text-ink border-t border-line-soft pt-1.5">
+                              <span>Vendor net payout</span>
+                              <span className="font-mono text-green-700">{fmt(netPayout)}</span>
+                            </div>
+                          </div>
+
+                          {/* Bank details for payout */}
+                          <div className="px-4 py-3 border-t border-line-soft">
+                            <p className="text-xs font-semibold text-ink-3 uppercase tracking-wider mb-2">Payout Bank Account</p>
+                            {vendor.bankAccount ? (
+                              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                                <span className="text-ink-3">Bank</span>
+                                <span className="text-ink font-medium">{vendor.bankName ?? '—'}</span>
+                                <span className="text-ink-3">Account</span>
+                                <span className="text-ink font-mono">{vendor.bankAccount}</span>
+                                <span className="text-ink-3">Holder</span>
+                                <span className="text-ink">{vendor.bankHolder ?? '—'}</span>
+                              </div>
+                            ) : (
+                              <p className="text-xs text-ink-3 italic">No bank details on file for this vendor.</p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+
+                  {/* Payment summary */}
+                  <section>
+                    <h3 className="text-xs font-semibold text-ink-3 uppercase tracking-wider mb-3">Payment Summary</h3>
+                    <div className="card p-4 space-y-2 text-sm">
+                      <div className="flex justify-between text-ink-2">
+                        <span>Subtotal</span>
+                        <span className="font-mono">{fmt(orderDetail.subtotal)}</span>
+                      </div>
+                      {orderDetail.discountAmount > 0 && (
+                        <div className="flex justify-between text-green-700">
+                          <span>Discount</span>
+                          <span className="font-mono font-medium">−{fmt(orderDetail.discountAmount)}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between text-ink-2">
+                        <span>Delivery fee</span>
+                        <span className="font-mono">{fmt(orderDetail.deliveryFee)}</span>
+                      </div>
+                      <div className="flex justify-between font-bold text-ink text-base border-t border-line-soft pt-2">
+                        <span>Total charged</span>
+                        <span className="font-mono">{fmt(orderDetail.total)}</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1 pt-2 border-t border-line-soft text-xs text-ink-3">
+                        <span>Payment method</span>
+                        <span className="text-right font-medium text-ink">{orderDetail.paymentMethod}</span>
+                        <span>Payment status</span>
+                        <span className={`text-right font-medium px-1.5 py-0.5 rounded-full w-fit ml-auto ${PAYMENT_STATUS_STYLES[orderDetail.paymentStatus] ?? ''}`}>
+                          {orderDetail.paymentStatus}
+                        </span>
+                        <span>Total platform commission</span>
+                        <span className="text-right font-medium text-crimson font-mono">
+                          {fmt(orderDetail.vendorBreakdown.reduce((s, v) => s + v.commission, 0))}
+                        </span>
+                        <span>Total vendor payouts</span>
+                        <span className="text-right font-medium text-green-700 font-mono">
+                          {fmt(orderDetail.vendorBreakdown.reduce((s, v) => s + v.netPayout, 0))}
+                        </span>
+                      </div>
+
+                      {/* Payment transactions */}
+                      {orderDetail.paymentTransactions.length > 0 && (
+                        <div className="pt-2 border-t border-line-soft space-y-1">
+                          <p className="text-xs font-semibold text-ink-3 uppercase tracking-wider">Transactions</p>
+                          {orderDetail.paymentTransactions.map((tx) => (
+                            <div key={tx.id} className="flex items-center justify-between text-xs">
+                              <span className="text-ink-2">{tx.method} · {new Date(tx.createdAt).toLocaleDateString('en-NP')}</span>
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono text-ink">{fmt(tx.amount)}</span>
+                                <span className={`px-1.5 py-0.5 rounded-full font-medium ${PAYMENT_STATUS_STYLES[tx.status] ?? 'bg-paper-3 text-ink-3'}`}>{tx.status}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </section>
+
+                  {/* Status timeline */}
+                  {orderDetail.statusLogs.length > 0 && (
+                    <section>
+                      <h3 className="text-xs font-semibold text-ink-3 uppercase tracking-wider mb-3">Order Timeline</h3>
+                      <div className="card p-4">
+                        <ol className="space-y-3">
+                          {[...orderDetail.statusLogs].reverse().map((log, i) => (
+                            <li key={log.id} className="flex gap-3">
+                              <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${i === 0 ? 'bg-crimson' : 'bg-paper-3'}`} />
+                              <div>
+                                <p className="text-sm font-medium text-ink">{log.toStatus.replace('_', ' ')}</p>
+                                {log.note && <p className="text-xs text-ink-3">{log.note}</p>}
+                                <p className="text-xs text-ink-3">
+                                  {new Date(log.createdAt).toLocaleString('en-NP', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                </p>
+                              </div>
+                            </li>
+                          ))}
+                        </ol>
+                      </div>
+                    </section>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       )}
     </div>
   )
