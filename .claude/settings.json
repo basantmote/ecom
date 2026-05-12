@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"d:\\\\claude\\\\ecom\" -Directory)",
+      "Bash(Select-Object -First 20)",
+      "Bash(ls -la d:\\\\\\\\claude\\\\\\\\ecom)",
+      "Bash(xargs grep -l \"audit\\\\|audit\\\\|encryption\\\\|PII\\\\|GDPR\")",
+      "PowerShell(Get-NetTCPConnection -LocalPort 3000,4000 -State Listen -ErrorAction SilentlyContinue)",
+      "PowerShell(netstat -ano)",
+      "PowerShell(Get-NetTCPConnection -LocalPort 3001 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess | ForEach-Object { Get-Process -Id $_ -ErrorAction SilentlyContinue } | Select-Object Id, ProcessName, MainWindowTitle)",
+      "Bash(sleep 8 && tail -30 /tmp/vendor-dev.log 2>/dev/null || cat C:/Users/user/AppData/Local/Temp/claude/d--claude-ecom/af34be1e-7ff4-4e60-9de4-76fbd2eaa682/tasks/bnxwa91do.output 2>/dev/null | tail -30)",
+      "Read(//tmp/**)",
+      "PowerShell($pids = \\(Get-NetTCPConnection -LocalPort 3001 -ErrorAction SilentlyContinue\\).OwningProcess | Sort-Object -Unique; foreach \\($p in $pids\\) { Stop-Process -Id $p -Force -ErrorAction SilentlyContinue }; Write-Host \"Killed: $pids\")",
+      "Bash(npx prisma *)",
+      "Bash(npx dotenv *)",
+      "Bash(DATABASE_URL=\"postgresql://postgres:Admin%40123@localhost:5432/ecom_db\" DIRECT_URL=\"postgresql://postgres:Admin%40123@localhost:5432/ecom_db\" npx prisma db push)",
+      "Bash(DATABASE_URL=\"postgresql://postgres:Admin%40123@localhost:5432/ecom_db\" DIRECT_URL=\"postgresql://postgres:Admin%40123@localhost:5432/ecom_db\" npx prisma db push --accept-data-loss)",
+      "PowerShell($pids = \\(Get-NetTCPConnection -LocalPort 4000 -ErrorAction SilentlyContinue\\).OwningProcess | Sort-Object -Unique; foreach \\($p in $pids\\) { Stop-Process -Id $p -Force -ErrorAction SilentlyContinue }; Write-Host \"Killed API: $pids\")",
+      "Bash(DATABASE_URL=\"postgresql://postgres:Admin%40123@localhost:5432/ecom_db\" DIRECT_URL=\"postgresql://postgres:Admin%40123@localhost:5432/ecom_db\" npx prisma generate)",
+      "Bash(mkdir -p \"/d/claude/ecom/apps/web/src/app/order-confirmation/[id]\")",
+      "Bash(mkdir -p \"/d/claude/ecom/apps/web/src/app/orders/[id]\")",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
+    ],
+    "additionalDirectories": [
+      "D:\\claude\\ecom\\apps\\web\\src\\app\\order-confirmation",
+      "D:\\claude\\ecom\\apps\\web\\src\\app\\orders"
+    ]
+  }
+}

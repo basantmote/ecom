@@ -205,12 +205,14 @@ The `.env` at repo root is the single source of truth. Key groups:
 Run with `cd packages/db && npm run db:seed`. Wipes all data then recreates:
 
 **Accounts (all passwords below):**
-| Role | Email | Password |
-|------|-------|----------|
-| Admin | admin@hamrobazaar.com | Admin@123 |
-| Vendor × 5 | tech/fashion/home/sport/books@vendor.com | Vendor@123 |
-| Customer × 5 | ram/sita/hari/maya/krishna@test.com | Test@1234 |
-| Delivery | driver@delivery.com | Driver@123 |
+| Role | Email | Phone | Password |
+|------|-------|-------|----------|
+| Admin | admin@hamrobazaar.com | — | Admin@123 |
+| Vendor × 5 | tech/fashion/home/sport/books@vendor.com | — | Vendor@123 |
+| Customer × 5 | ram/sita/hari/maya/krishna@test.com | +9779841000001–5 | Test@1234 |
+| Delivery | driver@delivery.com | **9851000001** | Driver@123 |
+
+The delivery app login accepts phone digits only (the `+977` prefix is prepended by the form). Enter `9851000001` in the phone field.
 
 **Products:** 44 products across 8 categories (Electronics, Fashion, Home & Living, Beauty, Sports, Books, Groceries, Toys & Kids). Images use `images.unsplash.com` (whitelisted in `apps/web/next.config.js` remotePatterns).
 
@@ -221,57 +223,79 @@ Run with `cd packages/db && npm run db:seed`. Wipes all data then recreates:
 ## Completed Features
 
 ### Admin Panel (`apps/admin`, port 3002)
-- **Login** (`/login`) — real `POST /auth/login` with role guard (`ADMIN` only); stores tokens in Zustand; redirects to `/`
-- **Logout** — Topbar "Sign out" button calls `POST /auth/logout`, clears store, redirects to `/login`
-- **Auth guard** — `DashboardLayout` redirects unauthenticated users to `/login`; uses `mounted` state to avoid SSR redirect loop
+- **Login / Logout / Auth guard** — role guard (`ADMIN` only); `mounted` state prevents SSR redirect loop
+- **Users page** (`/users`) — paginated list with search (email/phone/name) and role filter; Edit modal (fullName, email, phone, status); Reset Password modal (bcrypt hash + revokes all refresh tokens)
+- **Vendors page** (`/vendors`) — list with status filter; slide-in detail panel showing store info, owner contact, bank details, submitted documents (PAN/Citizenship/Business Reg) with verify status; Approve / Reject / Suspend / Reinstate actions via `PATCH /admin/vendors/:id/status`
 - **Categories page** (`/categories`) — grid view, create/edit modal with image preview, toggle active/hidden, delete guard (blocked if products assigned)
 - **Coupons page** (`/coupons`) — full CRUD table, create modal with type/value/date/usage fields, live discount preview
-- **Orders page** (`/orders`) — real data from `GET /admin/orders`; paginated, filterable by status; inline status `<select>` calls `PATCH /admin/orders/:id/status`
-- **Sidebar** updated with Categories, Coupons, and Orders nav items
-- **API routes** added: `PATCH /admin/categories/:id`, `DELETE /admin/categories/:id`, `GET /admin/orders`, `PATCH /admin/orders/:id/status`
+- **Orders page** (`/orders`) — paginated, filterable by status; inline status `<select>`; clicking a row opens a slide-in detail panel containing:
+  - Customer info + delivery address snapshot
+  - **Assign Driver card** — lists all delivery partners (AVAILABLE/BUSY/OFFLINE with status dot and vehicle emoji); assign, reassign, and unassign actions; shows current driver name, phone, vehicle, license plate, assignment status
+  - **Vendor Breakdown** — items grouped by vendor, per-vendor payout (gross → platform commission % → net payout), bank details for payment
+  - Payment summary (subtotal, discount, delivery fee, total, total commission, total vendor payouts)
+  - Payment transactions list
+  - Status timeline (reverse-chronological)
+
+**Admin API routes:**
+`GET/PATCH /admin/users/:id`, `POST /admin/users/:id/reset-password`,
+`GET/PATCH /admin/vendors/:id/status`,
+`GET/PATCH /admin/categories/:id`, `DELETE /admin/categories/:id`,
+`GET /admin/orders`, `GET /admin/orders/:id`, `PATCH /admin/orders/:id/status`,
+`POST /admin/orders/:id/assign`, `DELETE /admin/orders/:id/assign`,
+`GET /admin/delivery/partners`
 
 ### Vendor Portal (`apps/vendor`, port 3001)
-- **Login** (`/login`) — real `POST /auth/login` with role guard (`VENDOR` only); stores tokens; redirects to `/`
-- **Logout** — Topbar "Sign out" button calls `POST /auth/logout`, clears store
-- **Auth guard** — `DashboardLayout` uses `mounted` state to prevent SSR hydration redirect loop
-- **Products page** (`/products`) — fetches from `GET /vendor/products`; shows real price (min variant), stock, category, status badge; publish/unpublish toggle via `PUT /vendor/products/:id`
-- **Orders page** (`/orders`) — fetches from `GET /vendor/orders?page=X&limit=20`; paginated table with product, SKU, customer, qty, amount, payment method, status, date
+- **Login / Logout / Auth guard** — role guard (`VENDOR` only); `mounted` state prevents SSR redirect loop
+- **Products page** (`/products`) — fetches from `GET /vendor/products`; shows real price (min variant), stock, category, status badge; publish/unpublish toggle
+- **Orders page** (`/orders`) — paginated table with product, SKU, customer, qty, amount, payment method, status, date; each row has an **Assign Driver button** that opens a centered modal with:
+  - Current assignment card (driver name, vehicle, status dot, assignment status) + Unassign
+  - Radio list of all drivers ordered by availability (OFFLINE disabled)
+  - Assign / Reassign action
+
+**Vendor API routes:**
+`GET /vendor/orders`, `GET /vendor/orders/:id`,
+`POST /vendor/orders/:id/assign`, `DELETE /vendor/orders/:id/assign`,
+`GET /vendor/delivery/partners`
 
 ### Customer Storefront (`apps/web`, port 3000)
-- **Login** — rejects non-`CUSTOMER` accounts with a clear error message pointing to the correct portal
-- **Navbar** — account dropdown (desktop: "Account ▼" button; mobile: person icon) with My Account, My Orders, and Sign out; wishlist badge + cart badge always visible
-- **Cart page** — `mounted` guard prevents SSR hydration mismatch that was silently breaking Link navigation
-- **Products listing page** (`/products`) — category filter pills, product cards with variant image, price, discount badge, out-of-stock overlay. Fixed crash: `Product` has no `.images`; uses `variants[0].images[0]`
-- **Product detail page** (`/products/[slug]`) — image gallery (aggregated from all variants), variant selector, stock warning (≤5), qty stepper, trust badges, reviews section
-- **Checkout page** — syncs Zustand cart → DB (`POST /cart/items`) before creating order; promo code input; payment routing:
-  - COD / Store Credit → `POST /orders` → redirect to order confirmation
-  - eSewa → `POST /payments/esewa/initiate` → hidden form POST to eSewa sandbox
-  - Khalti → `POST /payments/khalti/initiate` → `window.location.href = payment_url`
+- **Login** — rejects non-`CUSTOMER` accounts with a clear error message
+- **Navbar** — account dropdown with My Account, My Orders, Sign out; wishlist badge + cart badge
+- **Cart page** — `mounted` guard prevents SSR hydration mismatch
+- **Products listing page** (`/products`) — category filter pills, product cards with variant image, price, discount badge, out-of-stock overlay
+- **Product detail page** (`/products/[slug]`) — image gallery, variant selector, stock warning (≤5), qty stepper, trust badges, reviews section
+- **Checkout page** (`/checkout`) — syncs Zustand cart → DB before creating order; promo code input; `orderPlaced` flag prevents race condition between `clear()` and redirect; payment routing:
+  - COD / Store Credit → `POST /orders` → `/order-confirmation/:id`
+  - eSewa → hidden form POST to sandbox
+  - Khalti → `window.location.href = payment_url`
+- **Order confirmation page** (`/order-confirmation/[id]`) — thank-you page with order ID, items, price breakdown, delivery address; links to My Orders
+- **Order detail page** (`/orders/[id]`) — status timeline, items with product links + SKU + product ID, payment summary, delivery address
+- **Account page** (`/account`) — My Orders tab shows `orderNumber` (falls back to `#${id.slice(-8)}`); Wishlist tab
 - **`ProductCard`** — `outOfStock` prop with overlay; Quick Add hidden when out of stock
+
+### Order IDs
+Human-readable format `HB-YYYYMMDD-XXXX` generated at order creation (`orders.router.ts`). Stored in `Order.orderNumber` (unique, nullable for legacy rows). All UIs fall back to `#${id.slice(-8).toUpperCase()}` when `orderNumber` is null.
 
 ### Coupon Validation Flow
 Frontend (`checkout/page.tsx`) POSTs `{ code, cartTotal }` to `POST /api/v1/promotions/coupons/validate`. Demo codes to test: `WELCOME10`, `SAVE500`, `FREESHIP`.
 
 ### Wishlist (`apps/web`)
-- **Store**: `apps/web/src/store/wishlist.store.ts` — Zustand store (not persisted). Holds `productIds: string[]`. Loaded from `GET /users/me/wishlist` on login via `WishlistSync` component in `Providers.tsx`, cleared on logout.
-- **API**: `GET/POST/DELETE /users/me/wishlist` — POST validates body with Zod (`productId` required, `variantId` optional).
-- **ProductCard**: receives `productId` prop; heart is always visible when wishlisted (red), hover-only otherwise. Redirects to `/login` if not authenticated.
-- **Navbar**: wishlist heart icon always shown with badge count; links to `/account?tab=wishlist`.
-- **Account page**: Wishlist tab fetches real API data, Remove button calls mutation and syncs Zustand store simultaneously.
+- **Store**: `apps/web/src/store/wishlist.store.ts` — Zustand store (not persisted). Loaded from `GET /users/me/wishlist` on login via `WishlistSync` in `Providers.tsx`, cleared on logout.
+- **API**: `GET/POST/DELETE /users/me/wishlist`
+- **ProductCard**: heart always visible when wishlisted (red), hover-only otherwise. Redirects to `/login` if unauthenticated.
+- **Account page**: Wishlist tab fetches real API data; Remove button syncs Zustand store simultaneously.
 
 ### Delivery App (`apps/delivery`, port 3003)
-- **Login** (`/login`) — real `POST /auth/login`; phone formatted as `+977{digits}`; role guard (`DELIVERY` only); tokens stored with `delivery-` prefix in localStorage
-- **Logout** — calls `POST /auth/logout`, clears store with `delivery-` prefixed keys
-- **Auth guard** — `mounted` state prevents premature redirect before Zustand hydrates
+- **Login** (`/login`) — phone input (`+977` prefix auto-prepended); role guard (`DELIVERY` only); tokens stored with `delivery-` prefix
+- **Logout** — clears `delivery-` prefixed localStorage keys
+- **Auth guard** — `mounted` state prevents premature redirect
 - **Dashboard** — fetches real assignments from `GET /delivery/assignments`; polls every 30s
   - Accept: `POST /delivery/assignments/:id/accept`
   - Mark Picked Up / Delivered: `POST /delivery/assignments/:id/status`
-  - Shows active vs completed sections; COD badge; delivery address card
+  - Active vs completed sections; COD badge; delivery address card
 - **`src/lib/api.ts`** — axios instance using `delivery-accessToken`; auto-refresh interceptor on 401
 
 ### Skeleton Loaders (`apps/web`)
-- `apps/web/src/components/ui/ProductCardSkeleton.tsx` — animated `animate-pulse` skeleton matching ProductCard layout.
-- Products listing page uses 8 skeleton cards during initial load instead of a centered spinner.
+- `apps/web/src/components/ui/ProductCardSkeleton.tsx` — `animate-pulse` skeleton matching ProductCard layout used during initial product list load.
 
 ### SSR / Zustand Hydration Pattern
 All dashboard layouts and auth-dependent pages use the `mounted` state pattern to avoid redirect loops and hydration mismatches:
