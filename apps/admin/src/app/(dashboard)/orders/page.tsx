@@ -59,6 +59,24 @@ interface VendorBreakdown {
   netPayout: number
 }
 
+interface DeliveryPartner {
+  id: string
+  vehicleType: string
+  licensePlate: string
+  status: string
+  user: { phone: string | null; profile: { fullName: string } | null }
+}
+
+interface DeliveryAssignment {
+  id: string
+  status: string
+  assignedAt: string
+  acceptedAt: string | null
+  pickedAt: string | null
+  deliveredAt: string | null
+  partner: DeliveryPartner
+}
+
 interface StatusLog {
   id: string
   fromStatus: string | null
@@ -103,6 +121,7 @@ interface OrderDetail {
   vendorBreakdown: VendorBreakdown[]
   statusLogs: StatusLog[]
   paymentTransactions: PaymentTransaction[]
+  deliveryAssignment: DeliveryAssignment | null
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -119,6 +138,28 @@ const STATUS_STYLES: Record<string, string> = {
   DELIVERED: 'bg-green-100 text-green-700',
   CANCELLED: 'bg-paper-3 text-ink-3',
   REFUNDED: 'bg-red-100 text-red-600',
+}
+
+const ASSIGNMENT_STATUS_STYLES: Record<string, string> = {
+  ASSIGNED: 'bg-amber-100 text-amber-700',
+  ACCEPTED: 'bg-blue-100 text-blue-700',
+  PICKED_UP: 'bg-indigo-100 text-indigo-700',
+  DELIVERED: 'bg-green-100 text-green-700',
+  REJECTED: 'bg-red-100 text-red-600',
+  FAILED: 'bg-red-100 text-red-600',
+}
+
+const VEHICLE_ICON: Record<string, string> = {
+  BIKE: '🛵',
+  SCOOTER: '🛵',
+  VAN: '🚐',
+  TRUCK: '🚛',
+}
+
+const PARTNER_STATUS_DOT: Record<string, string> = {
+  AVAILABLE: 'bg-green-500',
+  BUSY: 'bg-amber-400',
+  OFFLINE: 'bg-paper-3',
 }
 
 const PAYMENT_STATUS_STYLES: Record<string, string> = {
@@ -143,6 +184,7 @@ export default function OrdersPage() {
   const [page, setPage] = useState(1)
   const [statusFilter, setStatusFilter] = useState('')
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null)
+  const [assignPartnerId, setAssignPartnerId] = useState('')
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin-orders', page, statusFilter],
@@ -163,11 +205,36 @@ export default function OrdersPage() {
     enabled: !!selectedOrderId,
   })
 
+  const { data: driversData } = useQuery({
+    queryKey: ['admin-delivery-partners'],
+    queryFn: async () => {
+      const res = await api.get('/admin/delivery/partners')
+      return res.data.data as DeliveryPartner[]
+    },
+    enabled: !!selectedOrderId,
+  })
+
   const updateStatus = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) =>
       api.patch(`/admin/orders/${id}/status`, { status }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['admin-orders'] })
+      qc.invalidateQueries({ queryKey: ['admin-order-detail', selectedOrderId] })
+    },
+  })
+
+  const assignDriver = useMutation({
+    mutationFn: ({ orderId, partnerId }: { orderId: string; partnerId: string }) =>
+      api.post(`/admin/orders/${orderId}/assign`, { partnerId }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin-order-detail', selectedOrderId] })
+      setAssignPartnerId('')
+    },
+  })
+
+  const unassignDriver = useMutation({
+    mutationFn: (orderId: string) => api.delete(`/admin/orders/${orderId}/assign`),
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['admin-order-detail', selectedOrderId] })
     },
   })
@@ -219,7 +286,7 @@ export default function OrdersPage() {
                 {orders.map((order) => (
                   <tr
                     key={order.id}
-                    onClick={() => setSelectedOrderId(order.id)}
+                    onClick={() => { setSelectedOrderId(order.id); setAssignPartnerId('') }}
                     className={`hover:bg-paper-2/50 transition-colors cursor-pointer ${selectedOrderId === order.id ? 'bg-crimson/4' : ''}`}
                   >
                     <td className="px-4 py-3 font-mono text-xs font-semibold text-crimson">
@@ -341,6 +408,96 @@ export default function OrdersPage() {
                       </div>
                     </section>
                   </div>
+
+                  {/* Delivery Assignment */}
+                  <section>
+                    <h3 className="text-xs font-semibold text-ink-3 uppercase tracking-wider mb-3">Delivery Assignment</h3>
+                    <div className="card overflow-hidden">
+                      {orderDetail.deliveryAssignment ? (
+                        <>
+                          <div className="flex items-center gap-3 px-4 py-3 bg-paper-2 border-b border-line-soft">
+                            <div className="w-9 h-9 rounded-full bg-paper-3 flex items-center justify-center text-lg shrink-0">
+                              {VEHICLE_ICON[orderDetail.deliveryAssignment.partner.vehicleType] ?? '🚗'}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-semibold text-sm text-ink">{orderDetail.deliveryAssignment.partner.user.profile?.fullName ?? '—'}</p>
+                              <p className="text-xs text-ink-3">
+                                {orderDetail.deliveryAssignment.partner.user.phone} · {orderDetail.deliveryAssignment.partner.vehicleType} · {orderDetail.deliveryAssignment.partner.licensePlate}
+                              </p>
+                            </div>
+                            <div className="flex flex-col items-end gap-1.5 shrink-0">
+                              <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${ASSIGNMENT_STATUS_STYLES[orderDetail.deliveryAssignment.status] ?? 'bg-paper-3 text-ink-3'}`}>
+                                {orderDetail.deliveryAssignment.status}
+                              </span>
+                              <div className="flex items-center gap-1.5">
+                                <div className={`w-1.5 h-1.5 rounded-full ${PARTNER_STATUS_DOT[orderDetail.deliveryAssignment.partner.status] ?? 'bg-paper-3'}`} />
+                                <span className="text-[10px] text-ink-3">{orderDetail.deliveryAssignment.partner.status}</span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="px-4 py-3 space-y-2">
+                            <p className="text-xs font-medium text-ink-3">Reassign to another driver</p>
+                            <div className="flex gap-2">
+                              <select
+                                value={assignPartnerId}
+                                onChange={(e) => setAssignPartnerId(e.target.value)}
+                                className="input-field text-xs py-1.5 flex-1"
+                              >
+                                <option value="">Select driver…</option>
+                                {(driversData ?? []).map((d) => (
+                                  <option key={d.id} value={d.id} disabled={d.status === 'OFFLINE'}>
+                                    {VEHICLE_ICON[d.vehicleType] ?? '🚗'} {d.user.profile?.fullName ?? d.user.phone} — {d.status}
+                                  </option>
+                                ))}
+                              </select>
+                              <button
+                                disabled={!assignPartnerId || assignDriver.isPending}
+                                onClick={() => assignDriver.mutate({ orderId: orderDetail.id, partnerId: assignPartnerId })}
+                                className="btn-primary text-xs py-1.5 px-3 whitespace-nowrap disabled:opacity-50"
+                              >
+                                Reassign
+                              </button>
+                            </div>
+                            <button
+                              onClick={() => unassignDriver.mutate(orderDetail.id)}
+                              disabled={unassignDriver.isPending}
+                              className="text-xs text-crimson hover:underline disabled:opacity-50"
+                            >
+                              Unassign driver
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="px-4 py-4 space-y-3">
+                          <p className="text-sm text-ink-3">No driver assigned yet.</p>
+                          <div className="flex gap-2">
+                            <select
+                              value={assignPartnerId}
+                              onChange={(e) => setAssignPartnerId(e.target.value)}
+                              className="input-field text-xs py-1.5 flex-1"
+                            >
+                              <option value="">Select driver…</option>
+                              {(driversData ?? []).map((d) => (
+                                <option key={d.id} value={d.id} disabled={d.status === 'OFFLINE'}>
+                                  {VEHICLE_ICON[d.vehicleType] ?? '🚗'} {d.user.profile?.fullName ?? d.user.phone} — {d.status}
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              disabled={!assignPartnerId || assignDriver.isPending}
+                              onClick={() => assignDriver.mutate({ orderId: orderDetail.id, partnerId: assignPartnerId })}
+                              className="btn-primary text-xs py-1.5 px-3 whitespace-nowrap disabled:opacity-50"
+                            >
+                              {assignDriver.isPending ? 'Assigning…' : 'Assign'}
+                            </button>
+                          </div>
+                          {assignDriver.isError && (
+                            <p className="text-xs text-crimson">Failed to assign driver. Please try again.</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </section>
 
                   {/* Vendor breakdown — the core feature */}
                   <section>

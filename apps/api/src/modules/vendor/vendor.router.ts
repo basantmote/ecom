@@ -116,6 +116,19 @@ vendorRouter.get('/settlements', async (req, res, next) => {
   }
 })
 
+// Delivery partner list (for assign UI)
+vendorRouter.get('/delivery/partners', async (_req, res, next) => {
+  try {
+    const partners = await prisma.deliveryPartner.findMany({
+      include: { user: { select: { phone: true, profile: true } } },
+      orderBy: { status: 'asc' },
+    })
+    res.json({ success: true, data: partners })
+  } catch (err) {
+    next(err)
+  }
+})
+
 // Vendor orders
 vendorRouter.get('/orders', async (req, res, next) => {
   try {
@@ -144,6 +157,66 @@ vendorRouter.get('/orders', async (req, res, next) => {
       data: items,
       meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
     })
+  } catch (err) {
+    next(err)
+  }
+})
+
+vendorRouter.get('/orders/:id', async (req, res, next) => {
+  try {
+    const vendor = await prisma.vendor.findUnique({ where: { userId: req.user!.sub } })
+    if (!vendor) throw new AppError(404, 'Vendor not found')
+
+    const hasItems = await prisma.orderItem.count({ where: { orderId: req.params['id'], vendorId: vendor.id } })
+    if (!hasItems) return res.status(403).json({ success: false, message: 'Not authorized' })
+
+    const order = await prisma.order.findUnique({
+      where: { id: req.params['id'] },
+      include: {
+        deliveryAssignment: {
+          include: { partner: { include: { user: { select: { phone: true, profile: true } } } } },
+        },
+      },
+    })
+    if (!order) return res.status(404).json({ success: false, message: 'Order not found' })
+    res.json({ success: true, data: order })
+  } catch (err) {
+    next(err)
+  }
+})
+
+vendorRouter.post('/orders/:id/assign', async (req, res, next) => {
+  try {
+    const vendor = await prisma.vendor.findUnique({ where: { userId: req.user!.sub } })
+    if (!vendor) throw new AppError(404, 'Vendor not found')
+
+    const { partnerId } = z.object({ partnerId: z.string() }).parse(req.body)
+
+    const hasItems = await prisma.orderItem.count({ where: { orderId: req.params['id'], vendorId: vendor.id } })
+    if (!hasItems) return res.status(403).json({ success: false, message: 'Not authorized' })
+
+    const assignment = await prisma.deliveryAssignment.upsert({
+      where: { orderId: req.params['id'] },
+      create: { orderId: req.params['id'], partnerId, status: 'ASSIGNED' },
+      update: { partnerId, status: 'ASSIGNED', acceptedAt: null, pickedAt: null, deliveredAt: null },
+      include: { partner: { include: { user: { select: { phone: true, profile: true } } } } },
+    })
+    res.json({ success: true, data: assignment })
+  } catch (err) {
+    next(err)
+  }
+})
+
+vendorRouter.delete('/orders/:id/assign', async (req, res, next) => {
+  try {
+    const vendor = await prisma.vendor.findUnique({ where: { userId: req.user!.sub } })
+    if (!vendor) throw new AppError(404, 'Vendor not found')
+
+    const hasItems = await prisma.orderItem.count({ where: { orderId: req.params['id'], vendorId: vendor.id } })
+    if (!hasItems) return res.status(403).json({ success: false, message: 'Not authorized' })
+
+    await prisma.deliveryAssignment.delete({ where: { orderId: req.params['id'] } })
+    res.json({ success: true, message: 'Assignment removed' })
   } catch (err) {
     next(err)
   }

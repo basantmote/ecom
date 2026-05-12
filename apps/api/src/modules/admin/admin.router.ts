@@ -310,6 +310,11 @@ adminRouter.get('/orders/:id', async (req, res, next) => {
         },
         statusLogs: { orderBy: { createdAt: 'asc' } },
         paymentTransactions: { orderBy: { createdAt: 'desc' } },
+        deliveryAssignment: {
+          include: {
+            partner: { include: { user: { select: { phone: true, profile: true } } } },
+          },
+        },
       },
     })
     if (!order) return res.status(404).json({ success: false, message: 'Order not found' })
@@ -360,6 +365,47 @@ adminRouter.patch('/orders/:id/status', async (req, res, next) => {
       data: { orderId: order.id, toStatus: status, note: 'Updated by admin', changedById: req.user!.sub },
     })
     res.json({ success: true, data: order })
+  } catch (err) {
+    next(err)
+  }
+})
+
+adminRouter.post('/orders/:id/assign', async (req, res, next) => {
+  try {
+    const { partnerId } = z.object({ partnerId: z.string() }).parse(req.body)
+    const order = await prisma.order.findUnique({ where: { id: req.params['id'] } })
+    if (!order) return res.status(404).json({ success: false, message: 'Order not found' })
+
+    const assignment = await prisma.deliveryAssignment.upsert({
+      where: { orderId: req.params['id'] },
+      create: { orderId: req.params['id'], partnerId, status: 'ASSIGNED' },
+      update: { partnerId, status: 'ASSIGNED', acceptedAt: null, pickedAt: null, deliveredAt: null },
+      include: { partner: { include: { user: { select: { phone: true, profile: true } } } } },
+    })
+    res.json({ success: true, data: assignment })
+  } catch (err) {
+    next(err)
+  }
+})
+
+adminRouter.delete('/orders/:id/assign', async (req, res, next) => {
+  try {
+    const existing = await prisma.deliveryAssignment.findUnique({ where: { orderId: req.params['id'] } })
+    if (!existing) return res.status(404).json({ success: false, message: 'No assignment found' })
+    await prisma.deliveryAssignment.delete({ where: { orderId: req.params['id'] } })
+    res.json({ success: true, message: 'Assignment removed' })
+  } catch (err) {
+    next(err)
+  }
+})
+
+adminRouter.get('/delivery/partners', async (_req, res, next) => {
+  try {
+    const partners = await prisma.deliveryPartner.findMany({
+      include: { user: { select: { phone: true, profile: true } } },
+      orderBy: { status: 'asc' },
+    })
+    res.json({ success: true, data: partners })
   } catch (err) {
     next(err)
   }
