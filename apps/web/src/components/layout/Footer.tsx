@@ -1,63 +1,92 @@
 import Link from 'next/link'
 
+const LINKS = {
+  Shop: [
+    { label: 'Electronics', href: '/products?category=electronics' },
+    { label: 'Fashion', href: '/products?category=fashion' },
+    { label: 'Home & Living', href: '/products?category=home-living' },
+    { label: 'Beauty', href: '/products?category=beauty' },
+    { label: 'Sports', href: '/products?category=sports' },
+  ],
+  Sell: [
+    { label: 'Become a Vendor', href: '/vendor/register' },
+    { label: 'Vendor Dashboard', href: '/vendor/dashboard' },
+    { label: 'Seller Guide', href: '/vendor/docs' },
+    { label: 'Commission Rates', href: '/vendor/pricing' },
+  ],
+  Help: [
+    { label: 'Help Centre', href: '/help' },
+    { label: 'Returns & Refunds', href: '/returns' },
+    { label: 'Track Order', href: '/track' },
+    { label: 'Contact Us', href: '/contact' },
+  ],
+  Company: [
+    { label: 'About Us', href: '/about' },
+    { label: 'Privacy Policy', href: '/privacy' },
+    { label: 'Terms of Use', href: '/terms' },
+    { label: 'Careers', href: '/careers' },
+  ],
+}
+
+const PAYMENTS = ['eSewa', 'Khalti', 'COD', 'Credits']
+
 export function Footer() {
   return (
-    <footer className="bg-ink text-paper-3 mt-16">
-      <div className="max-w-7xl mx-auto px-4 py-12 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-8">
+    <footer className="bg-ink border-t border-ink-2/50">
+      {/* Main grid */}
+      <div className="max-w-7xl mx-auto px-4 pt-14 pb-10 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-10">
+        {/* Brand col */}
         <div className="col-span-2 sm:col-span-3 lg:col-span-1">
-          <span className="font-serif text-xl font-bold text-paper">
-            हाम्रो<span className="text-crimson">Bazaar</span>
-          </span>
-          <p className="mt-3 text-sm text-ink-3 leading-relaxed">
-            Nepal&apos;s modern multi-vendor marketplace. Shop local, support Nepali businesses.
+          <Link href="/" className="inline-block mb-4">
+            <span className="font-serif text-xl font-bold text-paper">
+              हाम्रो<span className="text-gradient-crimson">Bazaar</span>
+            </span>
+          </Link>
+          <p className="text-ink-3 text-sm leading-relaxed mb-5 max-w-xs">
+            Nepal&apos;s modern multi-vendor marketplace. Shop local, support Nepali businesses, get it delivered anywhere in 77 districts.
           </p>
-        </div>
-
-        <div>
-          <h4 className="font-serif font-semibold text-paper mb-3 text-sm">Shop</h4>
-          <ul className="space-y-2 text-sm">
-            {['Electronics', 'Fashion', 'Home & Living', 'Beauty', 'Groceries'].map((c) => (
-              <li key={c}>
-                <Link href={`/products?category=${c.toLowerCase().replace(' & ', '-')}`} className="hover:text-paper transition-colors">
-                  {c}
-                </Link>
-              </li>
+          {/* Payment chips */}
+          <div className="flex flex-wrap gap-2">
+            {PAYMENTS.map((p) => (
+              <span
+                key={p}
+                className="px-2.5 py-1 rounded-lg bg-ink-2/50 border border-ink-2 text-ink-3 text-[11px] font-medium"
+              >
+                {p}
+              </span>
             ))}
-          </ul>
+          </div>
         </div>
 
-        <div>
-          <h4 className="font-serif font-semibold text-paper mb-3 text-sm">Sell</h4>
-          <ul className="space-y-2 text-sm">
-            <li><Link href="/vendor/register" className="hover:text-paper transition-colors">Become a Vendor</Link></li>
-            <li><Link href="/vendor/dashboard" className="hover:text-paper transition-colors">Vendor Dashboard</Link></li>
-            <li><Link href="/vendor/docs" className="hover:text-paper transition-colors">Seller Guide</Link></li>
-          </ul>
-        </div>
-
-        <div>
-          <h4 className="font-serif font-semibold text-paper mb-3 text-sm">Help</h4>
-          <ul className="space-y-2 text-sm">
-            <li><Link href="/help" className="hover:text-paper transition-colors">Help Centre</Link></li>
-            <li><Link href="/returns" className="hover:text-paper transition-colors">Returns & Refunds</Link></li>
-            <li><Link href="/track" className="hover:text-paper transition-colors">Track Order</Link></li>
-          </ul>
-        </div>
-
-        <div>
-          <h4 className="font-serif font-semibold text-paper mb-3 text-sm">Company</h4>
-          <ul className="space-y-2 text-sm">
-            <li><Link href="/about" className="hover:text-paper transition-colors">About Us</Link></li>
-            <li><Link href="/privacy" className="hover:text-paper transition-colors">Privacy Policy</Link></li>
-            <li><Link href="/terms" className="hover:text-paper transition-colors">Terms of Use</Link></li>
-          </ul>
-        </div>
+        {/* Link columns */}
+        {Object.entries(LINKS).map(([group, links]) => (
+          <div key={group}>
+            <h4 className="text-paper text-sm font-semibold mb-4">{group}</h4>
+            <ul className="space-y-2.5">
+              {links.map((l) => (
+                <li key={l.label}>
+                  <Link
+                    href={l.href}
+                    className="text-ink-3 text-sm hover:text-paper transition-colors"
+                  >
+                    {l.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
       </div>
 
-      <div className="border-t border-ink-2">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col sm:flex-row justify-between items-center gap-2 text-xs text-ink-3">
-          <p>&copy; {new Date().getFullYear()} हाम्रोBazaar. All rights reserved.</p>
-          <p>Payments: eSewa &middot; Khalti &middot; COD</p>
+      {/* Bottom bar */}
+      <div className="border-t border-ink-2/40">
+        <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col sm:flex-row justify-between items-center gap-2">
+          <p className="text-ink-3 text-xs">
+            &copy; {new Date().getFullYear()} हाम्रोBazaar Pvt. Ltd. · Kathmandu, Nepal
+          </p>
+          <p className="text-ink-3 text-xs">
+            Made with ♥ for Nepal
+          </p>
         </div>
       </div>
     </footer>

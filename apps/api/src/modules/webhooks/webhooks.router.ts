@@ -1,8 +1,25 @@
 import { Router, Request, Response, NextFunction } from 'express'
+import crypto from 'crypto'
+import { z } from 'zod'
 import { prisma } from '@ecom/db'
-import { WhatsAppWebhookPayload } from '@ecom/types'
 
 export const webhooksRouter = Router()
+
+// Minimal Zod schema — validates structure without over-constraining Meta's payload
+const whatsAppPayloadSchema = z.object({
+  entry: z.array(z.object({
+    changes: z.array(z.object({
+      value: z.object({
+        messages: z.array(z.object({
+          from: z.string(),
+          id: z.string(),
+          timestamp: z.string(),
+          text: z.object({ body: z.string() }).optional(),
+        })).optional(),
+      }),
+    })),
+  })).optional(),
+})
 
 // WhatsApp webhook verification (Meta requires GET)
 webhooksRouter.get('/whatsapp', (req: Request, res: Response) => {
@@ -20,7 +37,33 @@ webhooksRouter.get('/whatsapp', (req: Request, res: Response) => {
 // Incoming WhatsApp messages
 webhooksRouter.post('/whatsapp', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const body = req.body as WhatsAppWebhookPayload
+    // Verify HMAC-SHA256 signature from Meta
+    const appSecret = process.env.WHATSAPP_APP_SECRET
+    if (appSecret) {
+      const signature = req.headers['x-hub-signature-256'] as string | undefined
+      if (!signature) return res.sendStatus(403)
+
+      const expected = 'sha256=' + crypto
+        .createHmac('sha256', appSecret)
+        .update(req.body as Buffer)
+        .digest('hex')
+
+      if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
+        return res.sendStatus(403)
+      }
+    }
+
+    // Parse raw buffer body
+    const rawBody = (req.body as Buffer).toString('utf-8')
+    const parsed = JSON.parse(rawBody)
+
+    const result = whatsAppPayloadSchema.safeParse(parsed)
+    if (!result.success) {
+      // Always return 200 to Meta to prevent retries for malformed payloads
+      return res.sendStatus(200)
+    }
+
+    const body = result.data
 
     for (const entry of body.entry ?? []) {
       for (const change of entry.changes ?? []) {
@@ -43,7 +86,6 @@ webhooksRouter.post('/whatsapp', async (req: Request, res: Response, next: NextF
           if (!isNaN(rating) && rating >= 1 && rating <= 5) {
             const user = await prisma.user.findUnique({ where: { phone } })
             if (user) {
-              // Find their most recent delivered order without a review
               const recentOrderItem = await prisma.orderItem.findFirst({
                 where: {
                   order: { customerId: user.id, status: 'DELIVERED' },

@@ -7,19 +7,35 @@ export const productsRouter = Router()
 // Public catalog
 productsRouter.get('/', async (req, res, next) => {
   try {
-    const page = Number(req.query['page'] ?? 1)
-    const limit = Number(req.query['limit'] ?? 20)
+    const page = Math.max(1, Number(req.query['page'] ?? 1))
+    const limit = Math.min(50, Math.max(1, Number(req.query['limit'] ?? 20)))
     const skip = (page - 1) * limit
     const category = req.query['category'] as string | undefined
     const vendorId = req.query['vendorId'] as string | undefined
     const featured = req.query['featured'] === 'true'
+    const search = (req.query['search'] as string | undefined)?.trim()
+    const sort = (req.query['sort'] as string | undefined) ?? 'newest'
 
     const where = {
       status: 'ACTIVE' as const,
+      ...(search && {
+        OR: [
+          { name: { contains: search, mode: 'insensitive' as const } },
+          { description: { contains: search, mode: 'insensitive' as const } },
+          { tags: { hasSome: [search.toLowerCase()] } },
+        ],
+      }),
       ...(category && { category: { slug: category } }),
       ...(vendorId && { vendorId }),
       ...(featured && { isFeatured: true }),
     }
+
+    const orderBy =
+      sort === 'name_asc'
+        ? [{ name: 'asc' as const }]
+        : sort === 'featured'
+          ? [{ isFeatured: 'desc' as const }, { createdAt: 'desc' as const }]
+          : [{ createdAt: 'desc' as const }]
 
     const [products, total] = await Promise.all([
       prisma.product.findMany({
@@ -29,7 +45,7 @@ productsRouter.get('/', async (req, res, next) => {
           category: true,
           vendor: { select: { storeName: true, slug: true } },
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy,
         skip,
         take: limit,
       }),

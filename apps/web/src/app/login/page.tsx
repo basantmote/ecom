@@ -28,10 +28,14 @@ export default function LoginPage() {
     try {
       const { data } = await api.post('/auth/login', { email: form.email, password: form.password })
       const { accessToken, refreshToken } = data.data
+      const payload = JSON.parse(atob(accessToken.split('.')[1]))
+      if (payload.role !== 'CUSTOMER') {
+        const portal = payload.role === 'ADMIN' ? 'admin panel (localhost:3002)' : payload.role === 'VENDOR' ? 'vendor portal (localhost:3001)' : payload.role === 'DELIVERY' ? 'delivery app (localhost:3003)' : 'your portal'
+        setError(`This account is not a customer account. Please use the ${portal}.`)
+        return
+      }
       localStorage.setItem('accessToken', accessToken)
       localStorage.setItem('refreshToken', refreshToken)
-      // Decode userId/role from JWT payload
-      const payload = JSON.parse(atob(accessToken.split('.')[1]))
       setTokens(accessToken, refreshToken, payload.sub, payload.role)
       router.push('/')
     } catch (err: unknown) {

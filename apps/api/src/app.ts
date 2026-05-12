@@ -5,6 +5,7 @@ import compression from 'compression'
 import morgan from 'morgan'
 import cookieParser from 'cookie-parser'
 import rateLimit from 'express-rate-limit'
+import { RedisStore } from 'rate-limit-redis'
 
 import { authRouter } from './modules/auth/auth.router'
 import { usersRouter } from './modules/users/users.router'
@@ -19,11 +20,14 @@ import { adminRouter } from './modules/admin/admin.router'
 import { webhooksRouter } from './modules/webhooks/webhooks.router'
 import { errorHandler } from './middleware/error.middleware'
 import { notFound } from './middleware/notFound.middleware'
+import { redis } from './lib/redis'
 
 export const app = express()
 
 // ─── Security & Parsing ──────────────────────────────────────────────────────
-app.use(helmet())
+app.use(helmet({
+  hsts: { maxAge: 31536000, includeSubDomains: true, preload: true },
+}))
 app.use(
   cors({
     origin: [
@@ -44,19 +48,27 @@ app.use('/api/v1/webhooks', express.raw({ type: 'application/json' }))
 app.use(express.json({ limit: '10mb' }))
 app.use(express.urlencoded({ extended: true }))
 
-// ─── Rate Limiting ────────────────────────────────────────────────────────────
+// ─── Rate Limiting (Redis-backed — works across multiple pods) ────────────────
+const redisStore = (prefix: string) =>
+  new RedisStore({
+    prefix: `rl:${prefix}:`,
+    sendCommand: (...args: string[]) => redis.call(args[0] as string, ...args.slice(1)) as Promise<number>,
+  })
+
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
   standardHeaders: true,
   legacyHeaders: false,
+  store: redisStore('global'),
 })
 app.use('/api', limiter)
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
-  message: 'Too many auth attempts, please try again later.',
+  message: { success: false, message: 'Too many auth attempts, please try again later.' },
+  store: redisStore('auth'),
 })
 app.use('/api/v1/auth', authLimiter)
 

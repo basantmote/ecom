@@ -3,6 +3,7 @@ import {
   register,
   login,
   refresh,
+  logout,
   sendOtp,
   verifyOtp,
 } from './auth.service'
@@ -39,6 +40,18 @@ export async function refreshHandler(req: Request, res: Response, next: NextFunc
     const { body } = refreshSchema.parse({ body: req.body })
     const tokens = await refresh(body.refreshToken)
     res.json({ success: true, data: tokens })
+  } catch (err) {
+    next(err)
+  }
+}
+
+export async function logoutHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const authHeader = req.headers.authorization
+    const accessToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : ''
+    const refreshToken = (req.body as { refreshToken?: string }).refreshToken
+    await logout(accessToken, refreshToken)
+    res.json({ success: true, message: 'Logged out successfully' })
   } catch (err) {
     next(err)
   }

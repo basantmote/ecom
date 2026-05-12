@@ -1,7 +1,6 @@
 import { Router } from 'express'
 import { prisma } from '@ecom/db'
 import { authenticate, authorize } from '../../middleware/auth.middleware'
-import { AppError } from '../../middleware/error.middleware'
 import { z } from 'zod'
 import { settlementQueue } from '../../queues/index'
 
@@ -74,6 +73,37 @@ adminRouter.post('/categories', async (req, res, next) => {
   }
 })
 
+adminRouter.patch('/categories/:id', async (req, res, next) => {
+  try {
+    const data = z
+      .object({
+        name: z.string().optional(),
+        slug: z.string().optional(),
+        imageUrl: z.string().optional(),
+        position: z.number().optional(),
+        isActive: z.boolean().optional(),
+      })
+      .parse(req.body)
+    const category = await prisma.category.update({ where: { id: req.params['id'] }, data })
+    res.json({ success: true, data: category })
+  } catch (err) {
+    next(err)
+  }
+})
+
+adminRouter.delete('/categories/:id', async (req, res, next) => {
+  try {
+    const count = await prisma.product.count({ where: { categoryId: req.params['id'] } })
+    if (count > 0) {
+      return res.status(400).json({ success: false, message: `Cannot delete — ${count} product(s) assigned to this category` })
+    }
+    await prisma.category.delete({ where: { id: req.params['id'] } })
+    return res.json({ success: true, message: 'Category deleted' })
+  } catch (err) {
+    next(err)
+  }
+})
+
 // Flash sale management
 adminRouter.get('/flash-sales', async (_req, res, next) => {
   try {
@@ -135,6 +165,54 @@ adminRouter.post('/settlements/run', async (req, res, next) => {
 
     const job = await settlementQueue.add('run-settlement', body)
     res.json({ success: true, message: 'Settlement job queued', jobId: job.id })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// Order management
+adminRouter.get('/orders', async (req, res, next) => {
+  try {
+    const page = Math.max(1, Number(req.query['page'] ?? 1))
+    const limit = Math.min(50, Number(req.query['limit'] ?? 20))
+    const status = req.query['status'] as string | undefined
+
+    const where = status ? { status: status as never } : {}
+
+    const [orders, total] = await Promise.all([
+      prisma.order.findMany({
+        where,
+        include: {
+          customer: { select: { email: true, phone: true, profile: true } },
+          items: {
+            include: { variant: { include: { product: { select: { name: true } } } } },
+            take: 3,
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      prisma.order.count({ where }),
+    ])
+
+    res.json({ success: true, data: orders, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } })
+  } catch (err) {
+    next(err)
+  }
+})
+
+adminRouter.patch('/orders/:id/status', async (req, res, next) => {
+  try {
+    const { status } = z.object({
+      status: z.enum(['PENDING', 'CONFIRMED', 'PROCESSING', 'PACKED', 'PICKED_UP', 'IN_TRANSIT', 'DELIVERED', 'CANCELLED', 'REFUNDED']),
+    }).parse(req.body)
+
+    const order = await prisma.order.update({ where: { id: req.params['id'] }, data: { status } })
+    await prisma.orderStatusLog.create({
+      data: { orderId: order.id, toStatus: status, note: 'Updated by admin', changedById: req.user!.sub },
+    })
+    res.json({ success: true, data: order })
   } catch (err) {
     next(err)
   }

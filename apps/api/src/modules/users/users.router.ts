@@ -1,7 +1,13 @@
 import { Router } from 'express'
+import { z } from 'zod'
 import { authenticate } from '../../middleware/auth.middleware'
 import { prisma } from '@ecom/db'
 import { AppError } from '../../middleware/error.middleware'
+
+const wishlistAddSchema = z.object({
+  productId: z.string().min(1),
+  variantId: z.string().min(1).optional(),
+})
 
 export const usersRouter = Router()
 
@@ -71,9 +77,46 @@ usersRouter.get('/me/wishlist', async (req, res, next) => {
   try {
     const items = await prisma.wishlistItem.findMany({
       where: { userId: req.user!.sub },
-      include: { product: true, variant: true },
+      include: {
+        product: {
+          include: {
+            variants: { where: { isActive: true }, take: 1 },
+            vendor: { select: { storeName: true } },
+          },
+        },
+        variant: true,
+      },
+      orderBy: { addedAt: 'desc' },
     })
     res.json({ success: true, data: items })
+  } catch (err) {
+    next(err)
+  }
+})
+
+usersRouter.post('/me/wishlist', async (req, res, next) => {
+  try {
+    const { productId, variantId } = wishlistAddSchema.parse(req.body)
+    const existing = await prisma.wishlistItem.findFirst({
+      where: { userId: req.user!.sub, productId },
+    })
+    if (!existing) {
+      await prisma.wishlistItem.create({
+        data: { userId: req.user!.sub, productId, variantId: variantId ?? null },
+      })
+    }
+    res.json({ success: true, message: 'Added to wishlist' })
+  } catch (err) {
+    next(err)
+  }
+})
+
+usersRouter.delete('/me/wishlist/:productId', async (req, res, next) => {
+  try {
+    await prisma.wishlistItem.deleteMany({
+      where: { userId: req.user!.sub, productId: req.params['productId'] },
+    })
+    res.json({ success: true, message: 'Removed from wishlist' })
   } catch (err) {
     next(err)
   }

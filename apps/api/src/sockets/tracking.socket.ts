@@ -1,9 +1,11 @@
 import { Server as HttpServer } from 'http'
 import { Server as SocketServer } from 'socket.io'
+import { createAdapter } from '@socket.io/redis-adapter'
 import jwt from 'jsonwebtoken'
 import { prisma } from '@ecom/db'
 import { TokenPayload, TrackingUpdate } from '@ecom/types'
 import { logger } from '../lib/logger'
+import { createRedisClient } from '../lib/redis'
 
 let io: SocketServer
 
@@ -17,6 +19,13 @@ export function initSocket(server: HttpServer) {
       credentials: true,
     },
   })
+
+  // Redis adapter — enables horizontal scaling across multiple API pods
+  const pubClient = createRedisClient()
+  const subClient = createRedisClient()
+  pubClient.on('error', (err) => logger.error('Socket.io pub client error:', err))
+  subClient.on('error', (err) => logger.error('Socket.io sub client error:', err))
+  io.adapter(createAdapter(pubClient, subClient))
 
   io.use((socket, next) => {
     const token = socket.handshake.auth['token'] as string | undefined

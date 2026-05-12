@@ -2,8 +2,9 @@
 
 import Link from 'next/link'
 import Image from 'next/image'
+import { useState, useEffect } from 'react'
 import { useCartStore } from '@/store/cart.store'
-import { Button } from '@/components/ui/Button'
+import { Spinner } from '@/components/ui/Spinner'
 
 function formatNPR(paisa: number) {
   return `Rs. ${(paisa / 100).toLocaleString('en-NP')}`
@@ -11,6 +12,16 @@ function formatNPR(paisa: number) {
 
 export default function CartPage() {
   const { items, removeItem, updateQuantity, total, itemCount } = useCartStore()
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => { setMounted(true) }, [])
+
+  if (!mounted) {
+    return (
+      <div className="flex justify-center py-24">
+        <Spinner className="w-8 h-8" />
+      </div>
+    )
+  }
 
   if (items.length === 0) {
     return (
