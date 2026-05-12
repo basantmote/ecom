@@ -129,8 +129,8 @@ vendorRouter.get('/orders', async (req, res, next) => {
       prisma.orderItem.findMany({
         where: { vendorId: vendor.id },
         include: {
-          order: { include: { customer: { select: { profile: true, phone: true } } } },
-          variant: { include: { product: true } },
+          order: { select: { id: true, orderNumber: true, createdAt: true, paymentMethod: true, customer: { select: { profile: true, phone: true } } } },
+          variant: { include: { product: { select: { id: true, name: true } } } },
         },
         orderBy: { order: { createdAt: 'desc' } },
         skip: (page - 1) * limit,

@@ -171,7 +171,7 @@ export default function CheckoutPage() {
 
       // Step 3: Handle payment method
       if (payment === 'COD' || payment === 'CREDIT') {
-        router.push(`/orders/${orderId}?success=1`)
+        router.push(`/order-confirmation/${orderId}`)
         return
       }
 

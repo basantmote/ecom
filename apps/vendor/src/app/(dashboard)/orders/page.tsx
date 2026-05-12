@@ -12,13 +12,14 @@ interface OrderItem {
   status: string
   order: {
     id: string
+    orderNumber: string | null
     createdAt: string
     paymentMethod: string
     customer: { phone: string | null; profile: { fullName: string } | null }
   }
   variant: {
     sku: string
-    product: { name: string }
+    product: { id: string; name: string }
   }
 }
 
@@ -88,11 +89,12 @@ export default function OrdersPage() {
                 {items.map((item) => (
                   <tr key={item.id} className="hover:bg-paper-2/50 transition-colors">
                     <td className="px-4 py-3 font-mono text-xs text-ink-3">
-                      #{item.order.id.slice(-8).toUpperCase()}
+                      {item.order.orderNumber ?? `#${item.order.id.slice(-8).toUpperCase()}`}
                     </td>
                     <td className="px-4 py-3">
                       <p className="font-medium text-ink line-clamp-1">{item.variant.product.name}</p>
-                      <p className="text-xs text-ink-3">{item.variant.sku}</p>
+                      <p className="text-xs text-ink-3">SKU: {item.variant.sku}</p>
+                      <p className="text-xs text-ink-3/60 font-mono">#{item.variant.product.id.slice(-8).toUpperCase()}</p>
                     </td>
                     <td className="px-4 py-3 text-ink-2">
                       {item.order.customer.profile?.fullName ?? item.order.customer.phone ?? '—'}

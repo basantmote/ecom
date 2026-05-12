@@ -49,9 +49,10 @@ interface OrderItem {
 
 interface Order {
   id: string
+  orderNumber: string | null
   status: string
   createdAt: string
-  totalAmount: number
+  total: number
   items: OrderItem[]
 }
 
@@ -302,7 +303,9 @@ function AccountContent() {
                   )}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <p className="font-mono text-sm font-semibold text-ink">#{order.id.slice(-8).toUpperCase()}</p>
+                      <p className="font-mono text-sm font-semibold text-ink">
+                        {order.orderNumber ?? `#${order.id.slice(-8).toUpperCase()}`}
+                      </p>
                       <span className={`badge text-[10px] ${STATUS_COLORS[order.status] ?? 'bg-paper-3 text-ink-3'}`}>
                         {STATUS_LABELS[order.status] ?? order.status}
                       </span>
@@ -310,7 +313,7 @@ function AccountContent() {
                     <p className="text-xs text-ink-3 mt-0.5">
                       {date} · {order.items.length} item{order.items.length !== 1 ? 's' : ''}
                     </p>
-                    <p className="font-mono text-sm font-bold text-ink mt-1">{fmt(order.totalAmount)}</p>
+                    <p className="font-mono text-sm font-bold text-ink mt-1">{fmt(order.total)}</p>
                   </div>
                   <Link
                     href={`/orders/${order.id}`}

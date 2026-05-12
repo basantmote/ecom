@@ -76,7 +76,7 @@ paymentsRouter.get('/esewa/callback', async (req, res, next) => {
         }),
       ])
 
-      return res.redirect(`${process.env.WEB_URL}/orders/${orderId}?payment=success`)
+      return res.redirect(`${process.env.WEB_URL}/order-confirmation/${orderId}`)
     } else {
       await prisma.paymentTransaction.updateMany({
         where: { orderId, method: 'ESEWA' },

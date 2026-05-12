@@ -114,10 +114,17 @@ ordersRouter.post('/', async (req, res, next) => {
     const deliveryFee = 100 * 100 // NPR 100 flat for now (in paisa)
     const total = subtotal - discountAmount - creditsUsed + deliveryFee
 
+    // Generate human-readable order number: HB-YYYYMMDD-XXXX
+    const now = new Date()
+    const datePart = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`
+    const rand = Math.random().toString(36).slice(2, 6).toUpperCase()
+    const orderNumber = `HB-${datePart}-${rand}`
+
     // Create order in transaction
     const order = await prisma.$transaction(async (tx) => {
       const newOrder = await tx.order.create({
         data: {
+          orderNumber,
           customerId: userId,
           addressId: body.addressId,
           deliveryAddress: body.deliveryAddress as unknown as Prisma.InputJsonValue,

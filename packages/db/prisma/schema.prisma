@@ -452,6 +452,7 @@ model CartItem {
 
 model Order {
   id              String        @id @default(cuid())
+  orderNumber     String?       @unique @map("order_number")
   customerId      String        @map("customer_id")
   addressId       String?       @map("address_id")
   deliveryAddress Json          @map("delivery_address")
