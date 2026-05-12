@@ -3,12 +3,105 @@ import { prisma } from '@ecom/db'
 import { authenticate, authorize } from '../../middleware/auth.middleware'
 import { z } from 'zod'
 import { settlementQueue } from '../../queues/index'
+import bcrypt from 'bcryptjs'
 
 export const adminRouter = Router()
 
 adminRouter.use(authenticate, authorize('ADMIN'))
 
-// Vendor management
+// ─── User management ──────────────────────────────────────────────────────────
+
+adminRouter.get('/users', async (req, res, next) => {
+  try {
+    const page = Math.max(1, Number(req.query['page'] ?? 1))
+    const limit = Math.min(50, Number(req.query['limit'] ?? 20))
+    const search = (req.query['search'] as string | undefined)?.trim()
+    const role = req.query['role'] as string | undefined
+
+    const where: Record<string, unknown> = {}
+    if (role) where['role'] = role
+    if (search) {
+      where['OR'] = [
+        { email: { contains: search, mode: 'insensitive' } },
+        { phone: { contains: search } },
+        { profile: { fullName: { contains: search, mode: 'insensitive' } } },
+      ]
+    }
+
+    const [users, total] = await Promise.all([
+      prisma.user.findMany({
+        where: where as never,
+        include: {
+          profile: true,
+          _count: { select: { orders: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      prisma.user.count({ where: where as never }),
+    ])
+
+    const safeUsers = users.map(({ passwordHash: _, ...u }) => u)
+    res.json({ success: true, data: safeUsers, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } })
+  } catch (err) {
+    next(err)
+  }
+})
+
+adminRouter.patch('/users/:id', async (req, res, next) => {
+  try {
+    const body = z.object({
+      fullName: z.string().min(1).optional(),
+      email: z.string().email().optional(),
+      phone: z.string().optional(),
+      status: z.enum(['ACTIVE', 'SUSPENDED', 'PENDING_VERIFICATION']).optional(),
+      role: z.enum(['CUSTOMER', 'VENDOR', 'DELIVERY', 'ADMIN']).optional(),
+    }).parse(req.body)
+
+    const { fullName, ...userFields } = body
+
+    await prisma.$transaction(async (tx) => {
+      if (Object.keys(userFields).length > 0) {
+        await tx.user.update({ where: { id: req.params['id'] }, data: userFields })
+      }
+      if (fullName) {
+        await tx.userProfile.upsert({
+          where: { userId: req.params['id'] },
+          update: { fullName },
+          create: { userId: req.params['id'], fullName },
+        })
+      }
+    })
+
+    const updated = await prisma.user.findUnique({
+      where: { id: req.params['id'] },
+      include: { profile: true, _count: { select: { orders: true } } },
+    })
+    const { passwordHash: _, ...safeUser } = updated!
+    res.json({ success: true, data: safeUser })
+  } catch (err) {
+    next(err)
+  }
+})
+
+adminRouter.post('/users/:id/reset-password', async (req, res, next) => {
+  try {
+    const { newPassword } = z.object({
+      newPassword: z.string().min(8),
+    }).parse(req.body)
+
+    const passwordHash = await bcrypt.hash(newPassword, 10)
+    await prisma.user.update({ where: { id: req.params['id'] }, data: { passwordHash } })
+    // Revoke all refresh tokens so existing sessions are invalidated
+    await prisma.refreshToken.updateMany({ where: { userId: req.params['id'] }, data: { revoked: true } })
+    res.json({ success: true, message: 'Password reset successfully' })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// ─── Vendor management ────────────────────────────────────────────────────────
 adminRouter.get('/vendors', async (req, res, next) => {
   try {
     const status = req.query['status'] as string | undefined
