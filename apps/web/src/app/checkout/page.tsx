@@ -41,6 +41,7 @@ export default function CheckoutPage() {
   const [payment, setPayment] = useState<PaymentMethod>('COD')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [orderPlaced, setOrderPlaced] = useState(false)
 
   // Promo code state
   const [promoCode, setPromoCode] = useState('')
@@ -57,10 +58,10 @@ export default function CheckoutPage() {
   useEffect(() => { setMounted(true) }, [])
 
   useEffect(() => {
-    if (mounted && items.length === 0) {
+    if (mounted && items.length === 0 && !orderPlaced) {
       router.replace('/cart')
     }
-  }, [mounted, items.length, router])
+  }, [mounted, items.length, router, orderPlaced])
 
   if (!mounted) {
     return (
@@ -167,9 +168,12 @@ export default function CheckoutPage() {
       })
 
       const orderId: string = data.data.id
-      clear() // clear local Zustand cart (DB cart is cleared by the order API)
 
       // Step 3: Handle payment method
+      // Set flag BEFORE clearing cart so the empty-cart redirect useEffect is skipped
+      setOrderPlaced(true)
+      clear()
+
       if (payment === 'COD' || payment === 'CREDIT') {
         router.push(`/order-confirmation/${orderId}`)
         return

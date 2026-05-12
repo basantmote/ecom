@@ -25,7 +25,7 @@ api.interceptors.response.use(
       if (refreshToken) {
         try {
           const { data } = await axios.post(
-            `${process.env.NEXT_PUBLIC_API_URL}/auth/token/refresh`,
+            `${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1'}/auth/token/refresh`,
             { refreshToken },
           )
           localStorage.setItem('accessToken', data.data.accessToken)
